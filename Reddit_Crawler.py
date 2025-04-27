@@ -12,11 +12,7 @@ import prawcore.exceptions
 import time
 
 
-reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
-                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
-                     username = "Puzzleheaded_Buy5352",
-                     password = "Agentx44smile!",
-                     user_agent = "172Crawler")
+
 
 
 BATCH_SIZE = 10
