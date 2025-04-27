@@ -9,6 +9,7 @@ from pathlib import Path
 import sys
 import re
 import prawcore.exceptions
+import time
 
 
 reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
@@ -82,10 +83,14 @@ def crawl(subreddit_name):
             "hot": subreddit.hot(limit = None),
             "top": subreddit.top(limit = None),
             "new": subreddit.new(limit = None)
-        }
-    with lock1:    
-        for category, submissions in allSubmissions.items():
-            for submission in submissions:
+    }
+
+    retry_delay = 10
+
+       
+    for category, submissions in allSubmissions.items():
+        for submission in submissions:
+            try: 
                 post_data = {
                     "subreddit": subreddit_name,
                     "author": str(submission.author) if submission.author else "deleted",
@@ -101,17 +106,36 @@ def crawl(subreddit_name):
                     "comments": []
                 }
                 submission.comments.replace_more(limit=0)
-                for top_level_comment in submission.comments[:10]:
+                for top_level_comment in submission.comments[:20]:
                     post_data["comments"].append(top_level_comment.body)
-                print(post_data)
-                batch_data.append(post_data)
+
+                #print(post_data)
+                with lock1:
+                    batch_data.append(post_data)
                 
-                if len(batch_data) >= BATCH_SIZE:
-                    write_to_json(batch_data)
-                    print("written to json")
-                    batch_data = []
-            if batch_data:
-                write_to_json(batch_data)
+                    if len(batch_data) >= BATCH_SIZE:
+                        write_to_json(batch_data)
+                        print(f"Thread {threading.current_thread().name} wrote to JSON.")
+                        batch_data = []
+            except praw.exceptions.APIException as e:
+                print(f"API Exception occurred: {e}")
+                time.sleep(10)
+            except prawcore.exceptions.TooManyRequests as e:
+                print(f"{subreddit_name}'s Rate limit exceeded. Waiting for {retry_delay} seconds before retrying...")
+                time.sleep(retry_delay)
+            except prawcore.exceptions.ServerError as e:
+                print(f"Server error occurred: {e}")
+                time.sleep(10)
+            except prawcore.exceptions.Forbidden as e:
+                print(f"Fobidden access error: {e}")
+                time.sleep(60)
+            except Exception as e:
+                print(f"Unexcepted error: {e}")
+                time.sleep(10)
+    with lock1:
+        if batch_data:
+            write_to_json(batch_data)
+            print(f"Thread {threading.current_thread().name} wrote to JSON.")
 
 
 #looking for http links in jsons
@@ -120,7 +144,7 @@ def crawl(subreddit_name):
 
 
 
-subreddits = ['genshin_impact_leaks', 'honkaistarrail_leaks', 'wutheringwavesleaks']
+subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology']
 threads = []
 
 def main():
@@ -132,11 +156,14 @@ def main():
             threads.append(t)
             t.start()
 
-        for t in threads:
-            t.join()
+        while any(t.is_alive() for t in threads):
+            for t in threads:
+                t.join(timeout=1)
 
     except KeyboardInterrupt:
         print("Keyboard Interrupt")
+        for t in threads:
+            pass
         sys.exit(0)
 
 if __name__ == "__main__":
