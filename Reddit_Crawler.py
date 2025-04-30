@@ -10,8 +10,14 @@ import sys
 import re
 import prawcore.exceptions
 import time
+from bs4 import BeautifulSoup
 
 
+reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
+                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
+                     username = "Puzzleheaded_Buy5352",
+                     password = "Agentx44smile!",
+                     user_agent = "172Crawler")
 
 
 
@@ -39,6 +45,14 @@ def get_latest_json(FILENAME):
         if not path.exists() or get_file_size(path) < MAX_FILE_SIZE:
             return path
         i += 1
+
+def get_directory_size(directory):
+    total_size = 0
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+        if os.path.isfile(filepath):
+            total_size += os.path.getsize(filepath)
+    return total_size / (1024 * 1024)
 
 #function for duplicates
 # def checkDupes(directory):
@@ -70,7 +84,7 @@ def write_to_json(batch_data):
 
 #reddit crawling
 #needs to check for dupes
-def crawl(subreddit_name):
+def crawl(subreddit_name, sizeMB):
     print("Subreddit: {}".format(subreddit_name))
     subreddit = reddit.subreddit(subreddit_name)
 
@@ -87,6 +101,9 @@ def crawl(subreddit_name):
     for category, submissions in allSubmissions.items():
         for submission in submissions:
             try: 
+                if get_directory_size("./Reddit_Data") >= sizeMB:
+                    print("Size of Directory Exceeds Wanted Amount")
+                    return
                 post_data = {
                     "subreddit": subreddit_name,
                     "author": str(submission.author) if submission.author else "deleted",
@@ -147,7 +164,7 @@ def main():
     generate_directory(DIRECTORY_NAME)
     try:
         for sub in subreddits:
-            t = threading.Thread(target = crawl, args=(sub,))
+            t = threading.Thread(target = crawl, args=(sub,10))
             t.daemon = True
             threads.append(t)
             t.start()
