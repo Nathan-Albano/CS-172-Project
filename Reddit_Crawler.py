@@ -13,6 +13,7 @@ import time
 from queue import Queue
 import urllib.robotparser
 import urllib.request
+import urllib.parse
 from bs4 import BeautifulSoup
 
 reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
@@ -168,12 +169,26 @@ def find_links(filename):
                 #look for links in body and comment for links
                 #check url if it isnt the same link to reddit
                 #put into queue with info abt submission_id as well as received from url, body or comment
+                
         except json.JSONDecodeError:
             print(f"Corrupted file: {path}")
             return 
 
 
-
+def scrape_link(link_info):
+    
+    link = link_info['link']
+    print(link)
+    parse = urllib.parse.urlparse(link)
+    print(parse)
+    print(parse.scheme)
+    print(parse.netloc)
+    robot_link = f"{parse.scheme}://{parse.netloc}/robots.txt"
+    rb = urllib.robotparser.RobotFileParser(robot_link)
+    rb.read()
+    if not rb.can_fetch("*", link):
+        return
+    print("hello")
 
 
 
@@ -182,10 +197,13 @@ threads = []
 
 def main():
     generate_directory(DIRECTORY_NAME)
-    find_links("data_1.json")
+    robot_link = {
+        'link': "https://www.theguardian.com/society/2025/apr/29/exercise-can-counter-side-effects-of-cancer-treatment-biggest-review-of-its-kind-shows"
+    }
+    scrape_link(robot_link)
     try:
         for sub in subreddits:
-            t = threading.Thread(target = crawl, args=(sub,10))
+            t = threading.Thread(target = crawl, args=(sub,100))
             t.daemon = True
             threads.append(t)
             t.start()
