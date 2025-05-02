@@ -17,7 +17,11 @@ import urllib.parse
 from bs4 import BeautifulSoup
 
 
-
+reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
+                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
+                     username = "Puzzleheaded_Buy5352",
+                     password = "Agentx44smile!",
+                     user_agent = "172Crawler")
 
 BATCH_SIZE = 10
 MAX_FILE_SIZE = 50
@@ -113,6 +117,10 @@ def crawl(subreddit_name, sizeMB):
                     "retrievedfrom": category,
                     "comments": []
                 }
+
+                #Scrape links, not sure if we need to scrape every single post though...
+                #scrape_link({"link": submission.url})
+
                 submission.comments.replace_more(limit=0)
                 for top_level_comment in submission.comments[:20]:
                     post_data["comments"].append(top_level_comment.body)
@@ -182,8 +190,35 @@ def scrape_link(link_info):
     rb = urllib.robotparser.RobotFileParser(robot_link)
     rb.read()
     if not rb.can_fetch("*", link):
+        print(f"Scraping not allowed for {link} according to robots.txt")
         return
-    print("hello")
+        
+    print("Scraping is allowed for this link")
+    
+    # Fetch and parse the webpage content
+    try:
+        response = urllib.request.urlopen(link)
+        html = response.read()
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Extract the title of the page
+        title = soup.title.string if soup.title else "No title found"
+        print(f"Title of the page: {title}")
+
+        # Additional content extraction (example: article body)
+        body = soup.find('div', class_='article-body')  # Adjust based on page structure
+        if body:
+            print(f"Article Body: {body.get_text()[:200]}...")  # Print the first 200 characters of the body
+        
+        # Example: save the link to a file (you can log it or add it to a database)
+        with open("scraped_links.txt", "a") as file:
+            file.write(link + "\n")
+            print(f"Link saved: {link}")
+        
+    except Exception as e:
+        print(f"Error scraping {link}: {e}")
+
+
 
 
 
