@@ -10,8 +10,10 @@ import sys
 import re
 import prawcore.exceptions
 import time
+from queue import Queue
+import urllib.robotparser
+import urllib.request
 from bs4 import BeautifulSoup
-from collections import defaultdict
 
 reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
                      client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
@@ -19,12 +21,13 @@ reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
                      password = "Agentx44smile!",
                      user_agent = "172Crawler")
 
+
+
 BATCH_SIZE = 10
-MAX_FILE_SIZE = 10
+MAX_FILE_SIZE = 50
 DIRECTORY_NAME = './Reddit_Data'
 FILENAME = 'data'
 EXT = '.json'
-ids_url_dict = defaultdict(set)
 
 #data directory
 def generate_directory(DIRECTORY_NAME):
@@ -37,7 +40,7 @@ def get_file_size(file):
 
 #gives next json. Each json stores 50MB at most
 def get_latest_json(FILENAME):
-    i = 1
+    i = 0
     while True:
         filename = f"{FILENAME}_{i}{EXT}"
         path = Path(DIRECTORY_NAME) / filename
@@ -53,17 +56,9 @@ def get_directory_size(directory):
             total_size += os.path.getsize(filepath)
     return total_size / (1024 * 1024)
 
-#function for duplicates
-# def checkDupes(directory):
-
-#for writing into json (might not be needed) inefficient?
-# lock1 = threading.Lock()
-
-#for writing into json
+#for race condition
+lock1 = threading.Lock()
 lock2 = threading.Lock()
-
-#for hashmap
-lock3 = threading.Lock()
 
 def write_to_json(batch_data):
     with lock2:
@@ -88,8 +83,6 @@ def write_to_json(batch_data):
 
 #reddit crawling
 #needs to check for dupes
-#check crossposts potentially
-
 def crawl(subreddit_name, sizeMB):
     print("Subreddit: {}".format(subreddit_name))
     subreddit = reddit.subreddit(subreddit_name)
@@ -115,35 +108,27 @@ def crawl(subreddit_name, sizeMB):
                     "author": str(submission.author) if submission.author else "deleted",
                     "title": submission.title,
                     "URL": submission.url,
-                    "permalink": submission.permalink,
                     "ID": submission.id,
                     "body": submission.selftext,
                     "upvotes": submission.score,
                     "upvote_ratio": submission.upvote_ratio,
                     "visited": submission.visited,
-                    "time": datetime.datetime.fromtimestamp(submission.created).strftime("%Y-%m-%d %H:%M:%S"),
+                    "time": submission.created_utc,
                     "retrievedfrom": category,
-                    "url_title": "",
-                    "comment_links": "", 
                     "comments": []
                 }
                 submission.comments.replace_more(limit=0)
                 for top_level_comment in submission.comments[:20]:
                     post_data["comments"].append(top_level_comment.body)
 
-                #wip
-                with lock3:
-                    if ids_url_dict.setdefault(post_data["ID"], 1) != 1:
-                        continue
-
                 #print(post_data)
-                # with lock1:
-                batch_data.append(post_data)
-            
-                if len(batch_data) >= BATCH_SIZE:
-                    write_to_json(batch_data)
-                    print(f"Thread {threading.current_thread().name} wrote to JSON.")
-                    batch_data = []
+                with lock1:
+                    batch_data.append(post_data)
+                
+                    if len(batch_data) >= BATCH_SIZE:
+                        write_to_json(batch_data)
+                        print(f"Thread {threading.current_thread().name} wrote to JSON.")
+                        batch_data = []
             except praw.exceptions.APIException as e:
                 print(f"API Exception occurred: {e}")
                 time.sleep(10)
@@ -159,23 +144,45 @@ def crawl(subreddit_name, sizeMB):
             except Exception as e:
                 print(f"Unexcepted error: {e}")
                 time.sleep(10)
-    # with lock1:
-    if batch_data:
-        write_to_json(batch_data)
-        print(f"Thread {threading.current_thread().name} wrote to JSON.")
+    with lock1:
+        if batch_data:
+            write_to_json(batch_data)
+            print(f"Thread {threading.current_thread().name} wrote to JSON.")
 
 
 #looking for http links in jsons
-# def lookForLinks(directory):
+def find_links(filename):
+    path = Path(DIRECTORY_NAME) / filename
+    links = Queue()
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            #go through all data in json
+            for submission in data:
+                submission_id = submission.get("ID")
+                url = submission.get("URL")
+                body = submission.get("body")
+                comments = submission.get("comments")
+                #look for links in body and comment for links
+                #check url if it isnt the same link to reddit
+                #put into queue with info abt submission_id as well as received from url, body or comment
+        except json.JSONDecodeError:
+            print(f"Corrupted file: {path}")
+            return 
 
 
 
 
-subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology', 'usanews']
+
+
+subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology']
 threads = []
 
 def main():
     generate_directory(DIRECTORY_NAME)
+    find_links("data_1.json")
     try:
         for sub in subreddits:
             t = threading.Thread(target = crawl, args=(sub,10))
