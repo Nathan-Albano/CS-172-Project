@@ -16,11 +16,6 @@ import urllib.request
 import urllib.parse
 from bs4 import BeautifulSoup
 
-reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
-                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
-                     username = "Puzzleheaded_Buy5352",
-                     password = "Agentx44smile!",
-                     user_agent = "172Crawler")
 
 
 
@@ -197,10 +192,6 @@ threads = []
 
 def main():
     generate_directory(DIRECTORY_NAME)
-    robot_link = {
-        'link': "https://www.theguardian.com/society/2025/apr/29/exercise-can-counter-side-effects-of-cancer-treatment-biggest-review-of-its-kind-shows"
-    }
-    scrape_link(robot_link)
     try:
         for sub in subreddits:
             t = threading.Thread(target = crawl, args=(sub,100))
