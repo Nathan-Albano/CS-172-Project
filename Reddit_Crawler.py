@@ -11,14 +11,20 @@ import re
 import prawcore.exceptions
 import time
 from bs4 import BeautifulSoup
+from collections import defaultdict
 
-
+reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
+                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
+                     username = "Puzzleheaded_Buy5352",
+                     password = "Agentx44smile!",
+                     user_agent = "172Crawler")
 
 BATCH_SIZE = 10
-MAX_FILE_SIZE = 50
+MAX_FILE_SIZE = 10
 DIRECTORY_NAME = './Reddit_Data'
 FILENAME = 'data'
 EXT = '.json'
+ids_url_dict = defaultdict(set)
 
 #data directory
 def generate_directory(DIRECTORY_NAME):
@@ -50,9 +56,14 @@ def get_directory_size(directory):
 #function for duplicates
 # def checkDupes(directory):
 
-#for race condition
-lock1 = threading.Lock()
+#for writing into json (might not be needed) inefficient?
+# lock1 = threading.Lock()
+
+#for writing into json
 lock2 = threading.Lock()
+
+#for hashmap
+lock3 = threading.Lock()
 
 def write_to_json(batch_data):
     with lock2:
@@ -77,6 +88,8 @@ def write_to_json(batch_data):
 
 #reddit crawling
 #needs to check for dupes
+#check crossposts potentially
+
 def crawl(subreddit_name, sizeMB):
     print("Subreddit: {}".format(subreddit_name))
     subreddit = reddit.subreddit(subreddit_name)
@@ -102,27 +115,35 @@ def crawl(subreddit_name, sizeMB):
                     "author": str(submission.author) if submission.author else "deleted",
                     "title": submission.title,
                     "URL": submission.url,
+                    "permalink": submission.permalink,
                     "ID": submission.id,
                     "body": submission.selftext,
                     "upvotes": submission.score,
                     "upvote_ratio": submission.upvote_ratio,
                     "visited": submission.visited,
-                    "time": submission.created_utc,
+                    "time": datetime.datetime.fromtimestamp(submission.created).strftime("%Y-%m-%d %H:%M:%S"),
                     "retrievedfrom": category,
+                    "url_title": "",
+                    "comment_links": "", 
                     "comments": []
                 }
                 submission.comments.replace_more(limit=0)
                 for top_level_comment in submission.comments[:20]:
                     post_data["comments"].append(top_level_comment.body)
 
+                #wip
+                with lock3:
+                    if ids_url_dict.setdefault(post_data["ID"], 1) != 1:
+                        continue
+
                 #print(post_data)
-                with lock1:
-                    batch_data.append(post_data)
-                
-                    if len(batch_data) >= BATCH_SIZE:
-                        write_to_json(batch_data)
-                        print(f"Thread {threading.current_thread().name} wrote to JSON.")
-                        batch_data = []
+                # with lock1:
+                batch_data.append(post_data)
+            
+                if len(batch_data) >= BATCH_SIZE:
+                    write_to_json(batch_data)
+                    print(f"Thread {threading.current_thread().name} wrote to JSON.")
+                    batch_data = []
             except praw.exceptions.APIException as e:
                 print(f"API Exception occurred: {e}")
                 time.sleep(10)
@@ -138,10 +159,10 @@ def crawl(subreddit_name, sizeMB):
             except Exception as e:
                 print(f"Unexcepted error: {e}")
                 time.sleep(10)
-    with lock1:
-        if batch_data:
-            write_to_json(batch_data)
-            print(f"Thread {threading.current_thread().name} wrote to JSON.")
+    # with lock1:
+    if batch_data:
+        write_to_json(batch_data)
+        print(f"Thread {threading.current_thread().name} wrote to JSON.")
 
 
 #looking for http links in jsons
@@ -150,7 +171,7 @@ def crawl(subreddit_name, sizeMB):
 
 
 
-subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology']
+subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology', 'usanews']
 threads = []
 
 def main():
