@@ -134,12 +134,19 @@ def crawl(subreddit_name, sizeMB):
                     write_to_json(batch_data)
                     #print(f"Thread {threading.current_thread().name} wrote to JSON.")
                     batch_data = []
+
+                time.sleep(1)
+
+                retry_delay = 10
+
             except praw.exceptions.APIException as e:
                 print(f"API Exception occurred: {e}")
                 time.sleep(10)
             except prawcore.exceptions.TooManyRequests as e:
                 print(f"{subreddit_name}'s Rate limit exceeded. Waiting for {retry_delay} seconds before retrying...")
                 time.sleep(retry_delay)
+                #exponential retry delay
+                retry_delay = min(retry_delay * 2, 600)
             except prawcore.exceptions.ServerError as e:
                 print(f"Server error occurred: {e}")
                 time.sleep(10)
@@ -242,7 +249,7 @@ def main():
     print(get_directory_size("./Reddit_Data"))
     try:
         for sub in subreddits:
-            t = threading.Thread(target = crawl, args=(sub,200))
+            t = threading.Thread(target = crawl, args=(sub,400))
             t.daemon = True
             threads.append(t)
             t.start()
