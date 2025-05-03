@@ -50,10 +50,11 @@ def get_latest_json(FILENAME):
 
 def get_directory_size(directory):
     total_size = 0
-    for filename in os.listdir(directory):
-        filepath = os.path.join(directory, filename)
-        if os.path.isfile(filepath):
-            total_size += os.path.getsize(filepath)
+    with lock2:
+        for filename in os.listdir(directory):
+            filepath = os.path.join(directory, filename)
+            if os.path.isfile(filepath):
+                total_size += os.path.getsize(filepath)
     return total_size / (1024 * 1024)
 
 #for race condition
@@ -77,7 +78,7 @@ def write_to_json(batch_data):
 
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
-        print("written")
+        # print("written")
 
 
 
@@ -96,10 +97,11 @@ def crawl(subreddit_name, sizeMB):
 
     retry_delay = 10
 
-       
+
     for category, submissions in allSubmissions.items():
         for submission in submissions:
             try: 
+                
                 if get_directory_size("./Reddit_Data") >= sizeMB:
                     print("Size of Directory Exceeds Wanted Amount")
                     return
@@ -128,10 +130,10 @@ def crawl(subreddit_name, sizeMB):
                 with lock1:
                     batch_data.append(post_data)
                 
-                    if len(batch_data) >= BATCH_SIZE:
-                        write_to_json(batch_data)
-                        #print(f"Thread {threading.current_thread().name} wrote to JSON.")
-                        batch_data = []
+                if len(batch_data) >= BATCH_SIZE:
+                    write_to_json(batch_data)
+                    #print(f"Thread {threading.current_thread().name} wrote to JSON.")
+                    batch_data = []
             except praw.exceptions.APIException as e:
                 print(f"API Exception occurred: {e}")
                 time.sleep(10)
@@ -147,10 +149,9 @@ def crawl(subreddit_name, sizeMB):
             except Exception as e:
                 print(f"Unexcepted error: {e}")
                 time.sleep(10)
-    with lock1:
-        if batch_data:
-            write_to_json(batch_data)
-            #print(f"Thread {threading.current_thread().name} wrote to JSON.")
+    if batch_data:
+        write_to_json(batch_data)
+        print("final print")
 
 def is_reddit_link(url):
     parsed_url = urllib.parse.urlparse(url)
@@ -175,6 +176,7 @@ def find_links(filename):
                 #look for links in body and comment for links
                 #check url if it isnt the same link to reddit
                 #put into queue with info abt submission_id as well as received from url, body or comment
+                #checks the url part of dict
                 if not is_reddit_link(url):
                     link_info = {
                         "url": url,
@@ -184,6 +186,7 @@ def find_links(filename):
                     }
                     links.put(link_info)
                 
+                #wip need to check both body and comments need duplicate check
         except json.JSONDecodeError:
             print(f"Corrupted file: {path}")
             return 
@@ -231,12 +234,12 @@ def scrape_link(link_info):
 
 
 
-# subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology']
-subreddits = ['leagueoflegends']
+subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology','neutralpolitics', 'geopolitics', 'usanews', 'technology', 'ukpolitics', 'middleeastnews', 'newsofthestupid', 'newsoftheweird', 'positive_news']
 threads = []
 
 def main():
     generate_directory(DIRECTORY_NAME)
+    print(get_directory_size("./Reddit_Data"))
     try:
         for sub in subreddits:
             t = threading.Thread(target = crawl, args=(sub,200))
