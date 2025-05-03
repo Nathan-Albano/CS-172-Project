@@ -241,7 +241,7 @@ def scrape_link(link_info):
 
 
 
-subreddits = ['news', 'politics', 'worldnews', 'goodnews', 'upliftingnews', 'futurology','neutralpolitics', 'geopolitics', 'usanews', 'technology', 'ukpolitics', 'middleeastnews', 'newsofthestupid', 'newsoftheweird', 'positive_news']
+subreddits = ['news', 'worldnews', 'worldpolitics', 'politics', 'newshub', 'newsandpolitics', 'futurology']
 threads = []
 
 def main():
