@@ -164,6 +164,7 @@ def is_reddit_link(url):
     parsed_url = urllib.parse.urlparse(url)
     return not (parsed_url.netlock.lower().endswith("reddit.com") or parsed_url.netlock.lower().endswith("redd.it"))
     
+processed_links = set()
 
 #looking for http links in jsons
 def find_links(filename):
@@ -184,16 +185,43 @@ def find_links(filename):
                 #check url if it isnt the same link to reddit
                 #put into queue with info abt submission_id as well as received from url, body or comment
                 #checks the url part of dict
-                if not is_reddit_link(url):
+
+                if not is_reddit_link(url) and url not in processed_links:
                     link_info = {
                         "url": url,
                         "submission_id": submission_id,
                         "filename": filename,
                         "from": "url"
                     }
+                    processed_links.add(url) #we don't want to waste time and process the same link twice
                     links.put(link_info)
                 
-                #wip need to check both body and comments need duplicate check
+                #Check for links in body and comments
+                if body:
+                    found_links = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', body)
+                    for link in found_links:
+                        if link not in processed_links:
+                            link_info = {
+                                "link": link,
+                                "submission_id": submission_id,
+                                "from": "body"
+                            }
+                            processed_links.add(link)
+                            links.put(link_info)
+
+                # Check links in the comments
+                for comment in comments:
+                    found_links = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', comment)
+                    for link in found_links:
+                        if link not in processed_links:
+                            link_info = {
+                                "link": link,
+                                "submission_id": submission_id,
+                                "from": "comment"
+                            }
+                            processed_links.add(link)
+                            links.put(link_info)
+
         except json.JSONDecodeError:
             print(f"Corrupted file: {path}")
             return 
