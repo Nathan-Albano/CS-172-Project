@@ -17,11 +17,8 @@ import urllib.parse
 from bs4 import BeautifulSoup
 
 
-reddit = praw.Reddit(client_id = "LT5IPPOzyPf63rNmKLBd0A",
-                     client_secret = "44dm-FGppYj5Bu5354NEciMLalIwoA",
-                     username = "Puzzleheaded_Buy5352",
-                     password = "Agentx44smile!",
-                     user_agent = "172Crawler")
+
+
 
 BATCH_SIZE = 10
 MAX_FILE_SIZE = 10
@@ -38,7 +35,7 @@ def generate_directory(DIRECTORY_NAME):
 def get_file_size(file):
     return os.path.getsize(file) / (1024 * 1024)
 
-#gives next json. Each json stores 50MB at most
+#gives next json. Each json stores 10MB at most
 def get_latest_json(FILENAME):
     i = 0
     while True:
@@ -160,74 +157,82 @@ def crawl(subreddit_name, sizeMB):
         write_to_json(batch_data)
         print("final print")
 
-def is_reddit_link(url):
-    parsed_url = urllib.parse.urlparse(url)
-    return not (parsed_url.netlock.lower().endswith("reddit.com") or parsed_url.netlock.lower().endswith("redd.it"))
-    
-processed_links = set()
+def banned_link(url):
+    if not url:
+        return True
+    return any(domain in url for domain in ["reddit.com", "redd.it", "imgur.com", "youtube.com", "youtu.be", "vimeo.com", "dailymotion.com", "twitch.tv", "facebook.com/watch"])
+
+def extract_links(text):
+    if not text:
+        return []
+    return re.findall(r'(https?://[^\s"\'>]+)', text)
 
 #looking for http links in jsons
-def find_links(filename):
-    path = Path(DIRECTORY_NAME) / filename
-    links = Queue()
-    if os.path.exists(path):
+def find_links(directory):
+    all_links = Queue()
+    seen_links = set()
+    folder = Path(directory)
+
+    for path in folder.glob("*.json"):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             #go through all data in json
             for submission in data:
-                submission_id = submission.get("ID")
-                url = submission.get("URL")
-                body = submission.get("body")
-                comments = submission.get("comments")
-                #look for links in body and comment for links
-                #check url if it isnt the same link to reddit
-                #put into queue with info abt submission_id as well as received from url, body or comment
-                #checks the url part of dict
+                filename = path.name
 
-                if not is_reddit_link(url) and url not in processed_links:
-                    link_info = {
+                submission_id = submission.get("ID")
+                url = submission.get("URL", "")
+                body = submission.get("body", "")
+                comments = submission.get("comments", [])
+
+                #checks the url 
+                if url and not banned_link(url) and url not in seen_links:
+                    all_links.put({
                         "url": url,
                         "submission_id": submission_id,
                         "filename": filename,
-                        "from": "url"
-                    }
-                    processed_links.add(url) #we don't want to waste time and process the same link twice
-                    links.put(link_info)
+                        "from": "url",
+                        "depth": 0
+                    }) 
+                    seen_links.add(url)
                 
-                #Check for links in body and comments
-                if body:
-                    found_links = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', body)
-                    for link in found_links:
-                        if link not in processed_links:
-                            link_info = {
-                                "link": link,
-                                "submission_id": submission_id,
-                                "from": "body"
-                            }
-                            processed_links.add(link)
-                            links.put(link_info)
-
-                # Check links in the comments
+                #checks body
+                body_links = extract_links(body)
+                for link in body_links:
+                    if not banned_link(link) and link not in seen_links:
+                        all_links.put({
+                            "url": link,
+                            "submission_id": submission_id,
+                            "filename": filename,
+                            "from": "body",
+                            "depth": 0
+                        })
+                        seen_links.add(link)
+                #checks comments
                 for comment in comments:
-                    found_links = re.findall(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', comment)
-                    for link in found_links:
-                        if link not in processed_links:
-                            link_info = {
-                                "link": link,
-                                "submission_id": submission_id,
-                                "from": "comment"
-                            }
-                            processed_links.add(link)
-                            links.put(link_info)
+                    comment_links = extract_links(comment)
+                    for link in comment_links:
+                        if not banned_link(link) and link not in seen_links:
+                            all_links.put({
+                            "url": link,
+                            "submission_id": submission_id,
+                            "filename": filename,
+                            "from": "comment",
+                            "depth": 0
+                            })
+                            seen_links.add(link)
 
         except json.JSONDecodeError:
             print(f"Corrupted file: {path}")
             return 
 
 
-
+def get_bodytext(text, min_words=5):
+    lines = text.split('\n')
+    body_text = [line.strip() for line in lines if len(line.strip().split()) > min_words]
+    return body_text
 
 def scrape_link(link_info):
     
@@ -253,14 +258,23 @@ def scrape_link(link_info):
         print(f"Title of the page: {title}")
 
         # Additional content extraction (example: article body)
-        body = soup.find('div', class_='article-body') 
+        for tag in soup(['script', 'style']):
+            tag.decompose()
+
+        body = soup.body
         if body:
-            print(f"Article Body: {body.get_text()[:200]}...")  # Print the first 200 characters of the body
+            text = body.get_text(separator='\n', strip=True)
+            body_text = get_bodytext(text)
+            print(body_text)
+        else:
+            print("No body found")
         
         # Example: save the link to a file (you can log it or add it to a database)
-        with open("scraped_links.txt", "a") as file:
-            file.write(link + "\n")
-            print(f"Link saved: {link}")
+        filepath = get_latest_json("crawled_links")
+        print(filepath)
+        # with open("scraped_links.txt", "a") as file:
+        #     file.write(link + "\n")
+        #     print(f"Link saved: {link}")
         
     except Exception as e:
         print(f"Error scraping {link}: {e}")
@@ -270,6 +284,7 @@ def scrape_link(link_info):
 
 
 subreddits = ['news', 'worldnews', 'worldpolitics', 'politics', 'newshub', 'newsandpolitics', 'futurology']
+
 threads = []
 
 def main():
