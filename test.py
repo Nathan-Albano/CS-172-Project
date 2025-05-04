@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 import requests
 
 
+
 BATCH_SIZE = 10
 MAX_FILE_SIZE = 10
 DIRECTORY_NAME = './Reddit_Data'
@@ -233,58 +234,51 @@ def get_bodytext(text, min_words=5):
     body_text = [line.strip() for line in lines if len(line.strip().split()) > min_words]
     return body_text
 
-def scrape_link(link_info):
-    link = link_info['url']
-    print(f"--- Processing link: {link} ---")
+def scrape_link(link_info, max_depth = 1):
 
+    link = link_info['url']
+    if link_info['depth'] > max_depth:
+        return
     try:
         parse = urllib.parse.urlparse(link)
         robot_link = f"{parse.scheme}://{parse.netloc}/robots.txt"
 
-        # --- MODIFICATION START ---
-        rb = urllib.robotparser.RobotFileParser() # Create parser instance WITHOUT URL
-        allow_crawl = True # Default: Assume allowed if robots.txt fails
 
-        print(f"Fetching robots.txt using requests from: {robot_link}")
+        rb = urllib.robotparser.RobotFileParser() 
+        allow_crawl = True 
+
+
         try:
-            # Use requests to fetch robots.txt with a timeout
-            robots_response = requests.get(robot_link, timeout=10, headers={ # Use a generic user-agent for robots.txt
+            
+            robots_response = requests.get(robot_link, timeout=10, headers={ 
                 "User-Agent": "Mozilla/5.0 (compatible; Python RobotParser)"
             })
 
             if robots_response.status_code == 200:
-                print("Successfully fetched robots.txt content.")
-                # Parse the fetched content
+              
                 rb.parse(robots_response.text.splitlines())
-                # Now check permission using the parsed rules
+                
                 if not rb.can_fetch("*", link):
-                    print(f"Scraping not allowed by robots.txt for {link}")
-                    return # Exit if disallowed
+                    return 
                 else:
-                    print("Robots.txt allows scraping.")
-                    allow_crawl = True # Explicitly confirmed
+                    allow_crawl = True 
             elif robots_response.status_code == 404:
-                 print("robots.txt not found (404), assuming allowed.")
-                 allow_crawl = True # Common practice: if no robots.txt, allow
+                 allow_crawl = True 
             else:
-                # Handle other non-200 status codes for robots.txt (e.g., 403 Forbidden)
-                print(f"Failed to fetch robots.txt (Status: {robots_response.status_code}), assuming disallowed.")
-                allow_crawl = False # Be cautious if robots.txt exists but is inaccessible/forbidden
-                return # Exit if we can't get rules or they might forbid access
+
+                allow_crawl = False 
+                return 
 
         except requests.RequestException as e:
-            print(f"Network Error fetching robots.txt: {e}. Assuming allowed (fallback).")
-            allow_crawl = True # Fallback if network error occurs during robots.txt fetch
+            allow_crawl = True 
 
-        # Proceed only if crawling is allowed based on above logic
+
         if not allow_crawl:
-             print(f"Stopping processing for {link} due to robots.txt fetch issue or disallow rule.")
              return
-        # --- MODIFICATION END ---
 
 
-        # --- Rest of your scraping code (using requests for the main page) ---
-        print("Preparing main page request...")
+
+
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -293,38 +287,70 @@ def scrape_link(link_info):
             )
         }
 
-        print(f"Making GET request to: {link}")
         response = requests.get(link, headers=headers, timeout=15, allow_redirects=True)
-        print(f"GET request finished. Status code: {response.status_code}")
 
         # ... (your existing parsing and saving logic) ...
         if response.status_code != 200:
-            print(f"Failed to retrieve page: HTTP {response.status_code}")
             return
 
-        print("Parsing HTML content...")
         soup = BeautifulSoup(response.text, 'html.parser')
-        print("Finished parsing HTML.")
 
-        # ... (rest of your logic: article check, text extraction, saving) ...
+        title = soup.title.string if soup.title else "No title found"
+        for tag in soup(['script', 'style']):
+            tag.decompose()
 
-        print("Extracting content...")
-        # ... your code ...
+        body = soup.body
+        if body:
+            text = body.get_text(separator='\n', strip=True)
+            body_text = get_bodytext(text)
+            #print(body_text)
+        else:
+            body_text = ""
+            #print("No body found")
+        
+        page_links = set()
+        for anchor in soup.find_all('a', href=True):
+            link_href = anchor['href']
+            if link_href.startswith('http'):
+                page_links.add(link_href)
+            elif link_href.startswith('/'):
+                page_links.add(parse.scheme + "://" + parse.netloc + link_href)
+         
+        
+        data = {
+            "URL": link,
+            "from": link_info["from"],
+            "title": title,
+            "body": body_text,
+            "from_reddit": link_info.get("submission_id") or "",
+            "links": list(page_links), 
+            "depth": link_info["depth"] + 1
+        }
 
-        print("Calling write_to_json...")
-        # ... your code ...
-        print("Finished write_to_json.")
-        print(f"--- Successfully processed link: {link} ---")
+        write_to_json(data, "crawled_links")
+        link_info_list = []
+        for links in page_links:
+            basic_link_info = {
+                "url": links,
+                "submission_id": link_info["submission_id"],
+                "filename": get_latest_json("crawled_links"),
+                "from": "crawled_url",
+                "depth": link_info["depth"] + 1
+            }
+            link_info_list.append(basic_link_info)
+        return link_info_list
+        
 
 
     except requests.RequestException as e:
         # This catches errors during the MAIN page request
-        print(f"Network Error (requests.RequestException) scraping {link}: {e}")
+        #print("Network Error")
+        #print(f"Network Error (requests.RequestException) scraping {link}: {e}")
+        return
     except Exception as e:
         # Catch any other unexpected errors
-        print(f"General Error processing {link}: {e}")
-        import traceback
-        traceback.print_exc()
+       # print(f"General Error processing {link}: {e}")
+        return 
 
 
 
@@ -354,9 +380,12 @@ def main():
     #     sys.exit(0)
     queue = find_links("./Reddit_Data_test/")
     while queue:
-        scrape_link(queue[0])
+
+        more_links = scrape_link(queue[0])
         queue.popleft()
-        #time.sleep(5)
+        if more_links:
+            queue.extend(more_links)
+    
 
 
 if __name__ == "__main__":
