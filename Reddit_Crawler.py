@@ -363,7 +363,7 @@ def find_links_in_file(file, directory=DIRECTORY_NAME):
             comments = submission.get("comments", [])
 
             # Check the URL
-            if url and not banned_link(url) and url not in crawled_links:
+            if url and not banned_link(url) and url not in seen_links:
                 all_links.append({
                     "url": url,
                     "submission_id": submission_id,
