@@ -17,13 +17,110 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import requests
 
-
-
+#If we want to do a check for duplicates between runs
+SEEN_IDS_FILE = 'seen_submission_ids.json'
+CRAWLED_LINKS_FILE = 'crawled_links.json'
 BATCH_SIZE = 10
-MAX_FILE_SIZE = 10
-DIRECTORY_NAME = './Reddit_Data'
-FILENAME = 'data'
+MAX_FILE_SIZE = 9
+DIRECTORY_NAME = './Reddit_Data_Chunks'
+FILENAME = 'chunk'
 EXT = '.json'
+
+#for race condition
+lock1 = threading.Lock()
+lock2 = threading.Lock()
+
+#added for crawler reddit crawler that each thread checks a set() to see if its a duplicate
+lock3 = threading.Lock() 
+seen_submission_ids = set()
+
+lock4 = threading.Lock()
+crawled_links = set()
+
+#loading in previous seen ids
+def load_submission_ids():
+    if os.path.exists(SEEN_IDS_FILE):
+        try:
+            with open(SEEN_IDS_FILE, 'r', encoding='utf-8') as f:
+                ids = json.load(f)
+            with lock3:
+                seen_submission_ids.update(ids)
+            print(f"Loaded {len(ids)} seen submission IDs from {SEEN_IDS_FILE}")
+        except Exception as e:
+            print(f"Error loading seen submission IDs: {e}")
+
+# loading already crawled links
+def load_crawled_links():
+    if os.path.exists(CRAWLED_LINKS_FILE):
+        try:
+            with open(CRAWLED_LINKS_FILE, 'r', encoding='utf-8') as f:
+                urls = json.load(f)
+            with lock4:
+                crawled_links.update(urls)
+            print(f"Loaded {len(urls)} seen submission IDs from {SEEN_IDS_FILE}")
+        except Exception as e:
+            print(f"Error loading seen submission IDs: {e}")
+
+#saving seen ids 
+def save_submission_ids():
+    with lock3:
+        with open(SEEN_IDS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(seen_submission_ids), f)
+        print(f"Saved {len(seen_submission_ids)} seen submission IDs to {SEEN_IDS_FILE}")
+
+#saving seen links
+def save_crawled_links():
+    with lock4:
+        with open(SEEN_IDS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(list(crawled_links), f)
+        print(f"Saved {len(crawled_links)} seen submission IDs to {SEEN_IDS_FILE}")
+
+#checks for previously already retrieved reddit submission ids
+def check_prev_reddit_jsons(filename=FILENAME, directory=DIRECTORY_NAME):
+    max_num = get_latest_json_num(filename)
+    folder = Path(directory)
+    for i in range(max_num):
+        file_path = folder / f"{filename}_{i}.json"
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                datas = json.load(f)
+            new_datas = []
+            for data in datas:
+                id = data.get("ID")
+                if id not in seen_submission_ids:
+                    seen_submission_ids.add(id)
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+        except json.JSONDecodeError:
+            print(f"Invalid JSON: {file_path}")    
+
+#checks for previously already crawled links
+def check_prev_crawled_links_jsons(filename="crawled_links", directory=DIRECTORY_NAME):
+    max_num = get_latest_json_num(filename)
+    print(max_num)
+    folder = Path(directory)
+    for i in range(max_num):
+        file_path = folder / f"{filename}_{i}.json"
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                datas = json.load(f)
+            new_datas = []
+            for data in datas:
+                url = data.get("URL")
+                if url not in crawled_links:
+                    crawled_links.add(url)
+        except FileNotFoundError:
+            print(f"File not found: {file_path}")
+        except json.JSONDecodeError:
+            print(f"Invalid JSON: {file_path}")       
+
+
+# Initialize Reddit API
+reddit = praw.Reddit(client_id = "sr-sDM8dej6x24LRwASyXA",
+                    client_secret = "GPtPevpMImC9yMbhhPJ_THgC0QWRHg",
+                    username = "Clear_Market_7033",
+                    password = "Proninjamonkey123",
+                    user_agent = "turibl")
 
 #data directory
 def generate_directory(DIRECTORY_NAME):
@@ -44,6 +141,21 @@ def get_latest_json(file=FILENAME):
             return path
         i += 1
 
+def get_latest_json_num(file=FILENAME):
+    i = 0
+    while True:
+        filename = f"{file}_{i}{EXT}"
+        path = Path(DIRECTORY_NAME) / filename
+        if not path.exists() or get_file_size(path) < MAX_FILE_SIZE:
+            return i
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                json.load(f)
+        except json.JSONDecodeError:
+            print(f"[Corrupt JSON] {filename} is invalid — skipping.")
+            return i  
+        i += 1
+
 def get_directory_size(directory):
     total_size = 0
     with lock2:
@@ -51,11 +163,9 @@ def get_directory_size(directory):
             filepath = os.path.join(directory, filename)
             if os.path.isfile(filepath):
                 total_size += os.path.getsize(filepath)
-    return total_size / (1024 * 1024)
+    return total_size / (1024 * 1024) 
 
-#for race condition
-lock1 = threading.Lock()
-lock2 = threading.Lock()
+
 
 def write_to_json(entry, filename=FILENAME):
     with lock2:
@@ -81,7 +191,6 @@ def write_to_json(entry, filename=FILENAME):
 
 
 #reddit crawling
-#needs to check for dupes
 def crawl(subreddit_name, sizeMB):
     print("Subreddit: {}".format(subreddit_name))
     subreddit = reddit.subreddit(subreddit_name)
@@ -95,14 +204,21 @@ def crawl(subreddit_name, sizeMB):
 
     retry_delay = 10
 
-
     for category, submissions in allSubmissions.items():
         for submission in submissions:
             try: 
-                
+                with lock3:
+                    if submission.id in seen_submission_ids:
+                        print(f"Submission {submission.id} already seen. Skipping...")
+                        continue
+                    else:
+                        print(f"Processing submission {submission.id}...")
+                        seen_submission_ids.add(submission.id)
+
                 if get_directory_size("./Reddit_Data") >= sizeMB:
                     print("Size of Directory Exceeds Wanted Amount")
                     return
+                
                 post_data = {
                     "subreddit": subreddit_name,
                     "author": str(submission.author) if submission.author else "deleted",
@@ -229,27 +345,85 @@ def find_links(directory):
             return 
     return all_links
 
+def find_links_in_file(file, directory=DIRECTORY_NAME):
+    all_links = deque()
+    folder = Path(directory)
+    path = folder / file
+    seen_links = set()
+    seen_links.update(crawled_links)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        for submission in data:
+            filename = path.name
+            submission_id = submission.get("ID")
+            url = submission.get("URL", "")
+            body = submission.get("body", "")
+            comments = submission.get("comments", [])
+
+            # Check the URL
+            if url and not banned_link(url) and url not in crawled_links:
+                all_links.append({
+                    "url": url,
+                    "submission_id": submission_id,
+                    "filename": filename,
+                    "from": "url",
+                    "depth": 0
+                })
+                seen_links.add(url)
+
+            # Check body
+            body_links = extract_links(body)
+            for link in body_links:
+                if not banned_link(link) and link not in seen_links:
+                    all_links.append({
+                        "url": link,
+                        "submission_id": submission_id,
+                        "filename": filename,
+                        "from": "body",
+                        "depth": 0
+                    })
+                    seen_links.add(link)
+
+            # Check comments
+            for comment in comments:
+                comment_links = extract_links(comment)
+                for link in comment_links:
+                    if not banned_link(link) and link not in seen_links:
+                        all_links.append({
+                            "url": link,
+                            "submission_id": submission_id,
+                            "filename": filename,
+                            "from": "comment",
+                            "depth": 0
+                        })
+                        seen_links.add(link)
+    except json.JSONDecodeError:
+        print(f"Corrupted file: {path}")
+        return
+    return all_links
+
+
 def get_bodytext(text, min_words=5):
     lines = text.split('\n')
     body_text = [line.strip() for line in lines if len(line.strip().split()) > min_words]
     return body_text
 
-def scrape_link(link_info, max_depth = 1):
-
+def scrape_link(link_info, max_depth = 1):   
     link = link_info['url']
+    with lock4:
+        crawled_links.add(link)
     if link_info['depth'] > max_depth:
         return
     try:
         parse = urllib.parse.urlparse(link)
         robot_link = f"{parse.scheme}://{parse.netloc}/robots.txt"
 
-
         rb = urllib.robotparser.RobotFileParser() 
         allow_crawl = True 
 
-
-        try:
-            
+        try:            
             robots_response = requests.get(robot_link, timeout=10, headers={ 
                 "User-Agent": "Mozilla/5.0 (compatible; Python RobotParser)"
             })
@@ -265,7 +439,6 @@ def scrape_link(link_info, max_depth = 1):
             elif robots_response.status_code == 404:
                  allow_crawl = True 
             else:
-
                 allow_crawl = False 
                 return 
 
@@ -275,9 +448,6 @@ def scrape_link(link_info, max_depth = 1):
 
         if not allow_crawl:
              return
-
-
-
 
         headers = {
             "User-Agent": (
@@ -309,12 +479,14 @@ def scrape_link(link_info, max_depth = 1):
             #print("No body found")
         
         page_links = set()
-        for anchor in soup.find_all('a', href=True):
-            link_href = anchor['href']
-            if link_href.startswith('http'):
-                page_links.add(link_href)
-            elif link_href.startswith('/'):
-                page_links.add(parse.scheme + "://" + parse.netloc + link_href)
+        for p in soup.find_all('p'):
+            for anchor in p.find_all('a', href=True):
+                link_href = anchor['href']
+                if link_href.startswith('http'):
+                    page_links.add(link_href)
+                elif link_href.startswith('/'):
+                    full_link = f"{parse.scheme}://{parse.netloc}{link_href}"
+                    page_links.add(full_link)
          
         
         data = {
@@ -352,40 +524,69 @@ def scrape_link(link_info, max_depth = 1):
        # print(f"General Error processing {link}: {e}")
         return 
 
-
-
+def crawl_links_in_queue(number, directory=DIRECTORY_NAME):
+    queue = find_links_in_file(f"{FILENAME}_{number}.json", directory=DIRECTORY_NAME)
+    print(len(queue))
+    if not queue:
+        return
+    
+    while queue:
+        link_info = queue[0]
+        scrape_link(link_info)
+        queue.popleft()
+    print(f"Thread-{number} done link crawling")
 
 subreddits = ['news', 'worldnews', 'worldpolitics', 'politics', 'newshub', 'newsandpolitics', 'futurology']
 
-threads = []
+threads1 = []
+threads2 = []
 
 def main():
+    #for dupe check
+    load_submission_ids()
+    load_crawled_links()
+    check_prev_reddit_jsons()
+    check_prev_crawled_links_jsons()
+    print(len(crawled_links))
+    print(len(seen_submission_ids))
+    #generates directory if not already generated
     generate_directory(DIRECTORY_NAME)
-    print(get_directory_size("./Reddit_Data"))
-    # try:
-    #     for sub in subreddits:
-    #         t = threading.Thread(target = crawl, args=(sub,400))
-    #         t.daemon = True
-    #         threads.append(t)
-    #         t.start()
+    print(get_directory_size("./Reddit_Data_Chunks"))
 
-    #     while any(t.is_alive() for t in threads):
-    #         for t in threads:
-    #             t.join(timeout=1)
+    #crawls reddit
+    try:
+        for sub in subreddits:
+            t = threading.Thread(target = crawl, args=(sub,400))
+            t.daemon = True
+            threads1.append(t)
+            t.start()
 
-    # except KeyboardInterrupt:
-    #     print("Keyboard Interrupt")
-    #     for t in threads:
-    #         pass
-    #     sys.exit(0)
-    queue = find_links("./Reddit_Data_test/")
-    while queue:
+        while any(t.is_alive() for t in threads1):
+            for t in threads1:
+                t.join(timeout=1)
 
-        more_links = scrape_link(queue[0])
-        queue.popleft()
-        if more_links:
-            queue.extend(more_links)
-    
+    except KeyboardInterrupt:
+        print("Keyboard Interrupt")
+        for t in threads2:
+            pass
+        sys.exit(0)
+
+    max_num = get_latest_json_num()
+    try:
+        for i in range(max_num):
+            t = threading.Thread(target = crawl_links_in_queue, args=(i,))
+            t.daemon = True
+            threads2.append(t)
+            t.start()
+
+        while any(t.is_alive() for t in threads2):
+            for t in threads2:
+                t.join(timeout=1)            
+    except KeyboardInterrupt:
+        print("Keyboard Interrupt")
+        for t in threads2:
+            pass
+        sys.exit(0)
 
 
 if __name__ == "__main__":
