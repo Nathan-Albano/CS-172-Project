@@ -21,8 +21,8 @@ import requests
 SEEN_IDS_FILE = 'seen_submission_ids.json'
 CRAWLED_LINKS_FILE = 'crawled_links.json'
 BATCH_SIZE = 10
-MAX_FILE_SIZE = 9
-DIRECTORY_NAME = './Reddit_Data_Chunks'
+MAX_FILE_SIZE = 10
+DIRECTORY_NAME = './Reddit_Data_Chunks - Copy'
 FILENAME = 'chunk'
 EXT = '.json'
 
@@ -130,6 +130,48 @@ def generate_directory(DIRECTORY_NAME):
 #check size of json 
 def get_file_size(file):
     return os.path.getsize(file) / (1024 * 1024)
+
+#load json file not multi threaded
+def load_json_file(filename):
+    with open(filename, 'r', encoding='utf-8') as f:
+        return json.load(f)
+    
+#save json file not multi threaded
+def save_json_file(data, filename):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4)
+
+#for linking links to original submissions
+def get_all_crawled_info(file, directory):
+    max_num = get_latest_json_num(file)
+    all_info = []
+    print(max_num)
+    for i in range(max_num + 1):
+        filepath = Path(directory) / f"{file}_{i}.json"
+        all_info.extend(load_json_file(filepath))
+    return all_info
+
+#for updating the reddit posts with link titles
+def update_chunks(chunk, file, directory):
+    max_num = get_latest_json_num(chunk)
+    print(f"Final Instance of file: {max_num}")
+    crawled_info = get_all_crawled_info(file, directory)
+    for i in range(max_num + 1):
+        filepath = Path(directory) / f"{chunk}_{i}.json"
+        chunk_info = load_json_file(filepath)
+        for object in chunk_info:
+            sid = object.get("ID")
+            matches = [entry for entry in crawled_info if entry.get("from_reddit") == sid]
+
+            url_titles = [m.get("title") for m in matches if m.get("from") == "url" and m.get("title")]
+            body_links = [(m.get("URL"), m.get("title")) for m in matches if m.get("from") == "body" and m.get("URL") and m.get("title")]
+            comments_links = [(m.get("URL"), m.get("title")) for m in matches if m.get("from") == "comment" and m.get("URL") and m.get("title")]
+
+            object["url_title"] = url_titles
+            object["body_links"] = body_links
+            object["comments_links"] = comments_links
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(chunk_info, f, indent = 4)
 
 #gives next json. Each json stores 10MB at most
 def get_latest_json(file=FILENAME):
@@ -363,7 +405,7 @@ def find_links_in_file(file, directory=DIRECTORY_NAME):
             comments = submission.get("comments", [])
 
             # Check the URL
-            if url and not banned_link(url) and url not in crawled_links:
+            if url and not banned_link(url) and url not in seen_links:
                 all_links.append({
                     "url": url,
                     "submission_id": submission_id,
@@ -571,6 +613,7 @@ def main():
             pass
         sys.exit(0)
 
+    #link crawler
     max_num = get_latest_json_num()
     try:
         for i in range(max_num):
@@ -588,6 +631,7 @@ def main():
             pass
         sys.exit(0)
 
-
+    #connects links back to reddit posts
+    update_chunks(FILENAME, "crawled_links", DIRECTORY_NAME)
 if __name__ == "__main__":
     main()

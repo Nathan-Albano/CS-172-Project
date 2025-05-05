@@ -21,7 +21,7 @@ import requests
 SEEN_IDS_FILE = 'seen_submission_ids.json'
 CRAWLED_LINKS_FILE = 'crawled_links.json'
 BATCH_SIZE = 10
-MAX_FILE_SIZE = 9
+MAX_FILE_SIZE = 10
 DIRECTORY_NAME = './Reddit_Data_Chunks'
 FILENAME = 'chunk'
 EXT = '.json'
@@ -572,8 +572,9 @@ def main():
         sys.exit(0)
 
     max_num = get_latest_json_num()
+    print(max_num + 1)
     try:
-        for i in range(max_num):
+        for i in range(max_num + 1):
             t = threading.Thread(target = crawl_links_in_queue, args=(i,))
             t.daemon = True
             threads2.append(t)
