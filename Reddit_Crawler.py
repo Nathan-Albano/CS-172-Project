@@ -16,6 +16,7 @@ import urllib.request
 import urllib.parse
 from bs4 import BeautifulSoup
 import requests
+import argparse
 
 #If we want to do a check for duplicates between runs
 SEEN_IDS_FILE = 'seen_submission_ids.json'
@@ -36,6 +37,13 @@ seen_submission_ids = set()
 
 lock4 = threading.Lock()
 crawled_links = set()
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Reddit Crawler")
+    parser.add_argument('--subreddits', type=str, required=True, help="Comma separated list of subreddit names")
+    parser.add_argument('--sizeMB', type=int, required=True, help="Size of the data to scrape in MB")
+    parser.add_argument('--outputDir', type=str, required=True, help="Directory to store scraped data")
+    return parser.parse_args()
 
 #loading in previous seen ids
 def load_submission_ids():
@@ -584,6 +592,21 @@ threads1 = []
 threads2 = []
 
 def main():
+    # Parse the command-line arguments
+    args = parse_args()
+    
+    subreddits = args.subreddits.split(',')  # Split the comma-separated list of subreddits
+    sizeMB = args.sizeMB
+    outputDir = args.outputDir
+
+    # Make sure the output directory exists
+    generate_directory(outputDir)
+
+    # For debugging, print the arguments to confirm everything is correct
+    print(f"Subreddits to crawl: {subreddits}")
+    print(f"Output directory: {outputDir}")
+    print(f"Scraping up to {sizeMB} MB of data")
+
     #for dupe check
     load_submission_ids()
     load_crawled_links()
