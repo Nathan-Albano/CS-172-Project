@@ -185,7 +185,7 @@ def update_chunks(chunk, file, directory):
 def get_latest_json(file=FILENAME):
     i = 0
     while True:
-        filename = f"{file}_{i}{EXT}"
+        filename = f"{file}_{i}"
         path = Path(DIRECTORY_NAME) / filename
         if not path.exists() or get_file_size(path) < MAX_FILE_SIZE:
             return path
@@ -194,7 +194,7 @@ def get_latest_json(file=FILENAME):
 def get_latest_json_num(file=FILENAME):
     i = 0
     while True:
-        filename = f"{file}_{i}{EXT}"
+        filename = f"{file}_{i}"
         path = Path(DIRECTORY_NAME) / filename
         if not path.exists() or get_file_size(path) < MAX_FILE_SIZE:
             return i
@@ -591,6 +591,63 @@ subreddits = ['news', 'worldnews', 'worldpolitics', 'politics', 'newshub', 'news
 threads1 = []
 threads2 = []
 
+def load_graph(directory=DIRECTORY_NAME, file="crawled_links"):
+    """Load the link graph from crawled_links JSON files."""
+    from collections import defaultdict
+    max_num = get_latest_json_num(file, directory)
+    graph = defaultdict(set)
+    all_urls = set()
+    for i in range(max_num + 1):
+        path = Path(directory) / f"{file}_{i}.json"
+        if not path.exists():
+            continue
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for entry in data:
+                src = entry.get("URL")
+                links = entry.get("links", [])
+                if src:
+                    all_urls.add(src)
+                    for dst in links:
+                        graph[src].add(dst)
+                        all_urls.add(dst)
+        except Exception as e:
+            print(f"Error loading {path}: {e}")
+    for url in all_urls:
+        if url not in graph:
+            graph[url] = set()
+    return graph
+
+def pagerank(graph, damping=0.85, max_iter=100, tol=1e-6):
+    """Compute PageRank scores for the given graph."""
+    N = len(graph)
+    ranks = {node: 1.0 / N for node in graph}
+    for iteration in range(max_iter):
+        new_ranks = {}
+        for node in graph:
+            rank_sum = 0.0
+            for src in graph:
+                if node in graph[src]:
+                    rank_sum += ranks[src] / (len(graph[src]) if graph[src] else N)
+            new_ranks[node] = (1 - damping) / N + damping * rank_sum
+        diff = sum(abs(new_ranks[n] - ranks[n]) for n in graph)
+        ranks = new_ranks
+        if diff < tol:
+            print(f"Converged after {iteration+1} iterations.")
+            break
+    return ranks
+
+def run_pagerank():
+    """Run PageRank on crawled links and print top results."""
+    graph = load_graph()
+    print(f"Loaded graph with {len(graph)} nodes.")
+    ranks = pagerank(graph)
+    top = sorted(ranks.items(), key=lambda x: x[1], reverse=True)[:20]
+    print("Top 20 URLs by PageRank:")
+    for url, score in top:
+        print(f"{score:.6f} {url}")
+
 def main():
     # Parse the command-line arguments
     args = parse_args()
@@ -656,5 +713,9 @@ def main():
 
     #connects links back to reddit posts
     update_chunks(FILENAME, "crawled_links", DIRECTORY_NAME)
+
+    # Run PageRank analysis at the end
+    run_pagerank()
+
 if __name__ == "__main__":
     main()
