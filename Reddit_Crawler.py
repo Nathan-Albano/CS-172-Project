@@ -591,8 +591,8 @@ subreddits = ['news', 'worldnews', 'worldpolitics', 'politics', 'newshub', 'news
 threads1 = []
 threads2 = []
 
+#load link graph from crawled_links JSON files
 def load_graph(directory=DIRECTORY_NAME, file="crawled_links"):
-    """Load the link graph from crawled_links JSON files."""
     from collections import defaultdict
     max_num = get_latest_json_num(file, directory)
     graph = defaultdict(set)
@@ -619,8 +619,8 @@ def load_graph(directory=DIRECTORY_NAME, file="crawled_links"):
             graph[url] = set()
     return graph
 
+#compute pagerank scores for given graph
 def pagerank(graph, damping=0.85, max_iter=100, tol=1e-6):
-    """Compute PageRank scores for the given graph."""
     N = len(graph)
     ranks = {node: 1.0 / N for node in graph}
     for iteration in range(max_iter):
@@ -638,8 +638,8 @@ def pagerank(graph, damping=0.85, max_iter=100, tol=1e-6):
             break
     return ranks
 
+#print top results after running pagerank on crawled links
 def run_pagerank():
-    """Run PageRank on crawled links and print top results."""
     graph = load_graph()
     print(f"Loaded graph with {len(graph)} nodes.")
     ranks = pagerank(graph)
