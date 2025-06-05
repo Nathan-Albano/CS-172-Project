@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='output.css') }}">
+    <link href='https://fonts.googleapis.com/css?family=Reddit Sans' rel='stylesheet'>
+</head>
+<body>
+    <input type="checkbox" id="darkModeToggle">
+    <label for="darkModeToggle" class="toggle-label">Dark Mode</label>
+
+    <div class="container"> 
+    <h1>Search Results of {{query_output}}</h1>
+    <form action="/output" method = "POST">
+        <p>Query: <input type = "text" name = "query" placeholder = "Enter your search query"/></p>
+        <p>Additional Info: <input type = "text" name = "add_info" placeholder = "Optional extra info"/></p>
+        <p>Sort by:
+            <select name="filter_option">
+                <option value="Lucene">Lucene</option>
+                <option value="Relevant">Relevant</option>
+                <option value="Newest">Newest</option>
+                <option value="Oldest">Oldest</option>
+                <option value="Most_Upvoted">Most Upvoted</option>
+                <option value="Controversial">Controversial</option>
+            </select>
+        </p>
+        <p><input type = "submit" value = "Search &#x1F50E" /></p>
+    </form>
+</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Subreddit</th>
+                <th>Author</th>
+                <th>Upvotes</th>
+                <th>Date</th>
+                <th>Lucene Score (BM25)</th>
+                <th>Post</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+
+        <tbody>
+        {% for doc in lucene_output %}
+        <tr>
+            <td>{{ doc.subreddit or 'N/A' }}</td>
+            <td>{{ doc.author or 'N/A' }}</td>
+            <td>{{ doc.upvotes or 'N/A' }}</td>
+            <td>{{ doc.time or 'N/A' }}</td>
+            <td>{{ "%.2f"|format(doc.score) }}</td>
+            <td>{{ doc.title or 'N/A' }}</td>
+            <td>
+                {% if doc.ID %}
+                  <a href="https://www.reddit.com/comments/{{ doc.ID }}">Link</a>
+                {% else %}
+                  N/A
+                {% endif %}
+              </td>
+
+        </tr>
+        {% endfor %}
+        </tbody>
+
+    </table>
+
+</body>
+</html>

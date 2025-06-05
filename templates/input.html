@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='input.css') }}">
+    <link href='https://fonts.googleapis.com/css?family=Reddit Sans' rel='stylesheet'>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/STLLoader.js"></script>
+
+</head>
+<body>
+    <input type="checkbox" id="darkModeToggle">
+    <label for="darkModeToggle" class="toggle-label">Dark Mode</label>
+            
+    <div class="container">
+        <h1>Reddit Posts and Article Search</h1>
+        <form action="/output" method="POST">
+            <p>Query 
+                <input type="text" name="query" placeholder="Enter your search query" required/>
+            </p>
+            <p>Additional Info 
+                <input type="text" name="add_info" placeholder="Optional extra info"/>
+            </p>
+            <p>Sort by:
+                <select name="filter_option">
+                    <option value="Lucene">Lucene</option>
+                    <option value="Relevant">Relevant</option>
+                    <option value="Newest">Newest</option>
+                    <option value="Oldest">Oldest</option>
+                    <option value="Most_Upvoted">Most Upvoted</option>
+                    <option value="Controversial">Controversial</option>
+                </select>
+            </p>
+            <p>
+                <input type="submit" value="Search &#x1F50E" />
+            </p>
+        </form>
+    </div>
+    <script type="module" src="https://unpkg.com/@splinetool/viewer@1.9.99/build/spline-viewer.js"></script>
+    <spline-viewer 
+  url="https://prod.spline.design/EWVZS1N8kx28sYZT/scene.splinecode"
+  style="width: 550px; height: 550px; display: block; margin: auto;">
+</spline-viewer>
+</body>
+</html>
