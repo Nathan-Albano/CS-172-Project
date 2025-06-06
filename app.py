@@ -101,7 +101,7 @@ lucene.initVM(vmargs=['-Djava.awt.headless=true'])
 
     
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host='class-063.cs.ucr.edu', port=8888, debug=True)
 
 # create_index('sample_lucene_index/')
 # retrieve('sample_lucene_index/', 'web data')
