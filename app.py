@@ -50,7 +50,8 @@ def retrieve(storedir, query):
             "time": doc.get("time"),
             "author": doc.get("author"),
             "ratio": doc.get("ratio"),
-            "ID": doc.get("ID")
+            "ID": doc.get("ID"),
+            "pagerank": float(doc.get("pagerank") or 0.0)
         })
     return topkdocs
     #print(topkdocs)
@@ -105,6 +106,8 @@ def output():
             docs.sort(key=lambda x: int(x.get('upvotes')), reverse=True)
         elif sort_by == "Controversial":
             docs.sort(key=lambda x: x.get('ratio'))
+        elif sort_by == "PageRank":
+            docs.sort(key=lambda x: x.get("pagerank", 0.0), reverse=True)
 
         return render_template('output.html',query_output = query,lucene_output = docs)
     
