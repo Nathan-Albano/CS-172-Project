@@ -38,6 +38,7 @@
                 <th>Upvotes</th>
                 <th>Date</th>
                 <th>Lucene Score (BM25)</th>
+                <th>Relevant Score</th>
                 <th>Post</th>
                 <th>Link</th>
             </tr>
@@ -51,6 +52,13 @@
             <td>{{ doc.upvotes or 'N/A' }}</td>
             <td>{{ doc.time or 'N/A' }}</td>
             <td>{{ "%.2f"|format(doc.score) }}</td>
+            <td>
+                {% if doc.relevance_score is not none %}
+                    {{ "%.2f"|format(doc.relevance_score) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
             <td>{{ doc.title or 'N/A' }}</td>
             <td>
                 {% if doc.ID %}

@@ -7,11 +7,14 @@ from org.apache.lucene.store import MMapDirectory, SimpleFSDirectory, NIOFSDirec
 from java.nio.file import Paths
 from org.apache.lucene.analysis.standard import StandardAnalyzer
 from org.apache.lucene.document import Document, Field, FieldType
-from org.apache.lucene.queryparser.classic import QueryParser
+from org.apache.lucene.queryparser.classic import QueryParser, MultiFieldQueryParser
 from org.apache.lucene.index import FieldInfo, IndexWriter, IndexWriterConfig, IndexOptions, DirectoryReader
 from org.apache.lucene.search import IndexSearcher, BoostQuery, Query
 from org.apache.lucene.search.similarities import BM25Similarity
 from flask import request, Flask, render_template
+
+from java.util import HashMap
+from java.lang import Float
 
 import math
 from datetime import datetime
@@ -23,8 +26,15 @@ def retrieve(storedir, query):
     searchDir = NIOFSDirectory(Paths.get(storedir))
     searcher = IndexSearcher(DirectoryReader.open(searchDir))
     
-    parser = QueryParser('title', StandardAnalyzer())
-    parsed_query = parser.parse(query)
+    fields = ["title", "body", "comment", "url_title", "link_title", "link_body"]
+
+    boosts = HashMap()
+    boosts.put("title", Float(2.0))
+    boosts.put("url_title", Float(2.0))
+    boosts.put("link_title", Float(2.0))
+    
+    parser = MultiFieldQueryParser(fields, StandardAnalyzer(), boosts)
+    parsed_query = MultiFieldQueryParser.parse(parser, str(query))
 
     topDocs = searcher.search(parsed_query, 10).scoreDocs
     topkdocs = []
@@ -46,12 +56,13 @@ def retrieve(storedir, query):
     #print(topkdocs)
 def relevance_score(upvotes, downvotes, created_time_str):
     score = upvotes - downvotes
-    score *= math.log(max(1, abs(score)))
+    sign = 1 if score > 0 else -1 if score < 0 else 0
+    order = math.log(max(1, abs(score)))
     created_time = datetime.strptime(created_time_str, '%Y-%m-%d %H:%M:%S')
     beginning = datetime(1970,1,1)
     age = (created_time - beginning).total_seconds()
     age /= 45000
-    return score + age
+    return round(sign * order + age, 7)
 
 @app.route("/")
 def home():
@@ -76,14 +87,14 @@ def output():
         docs = retrieve('index/', str(query))
         #print(docs)
         print(sort_by)
+        for doc in docs:
+            up = int(doc.get('upvotes'))
+            down = (int(doc.get('upvotes')) - float(doc.get('ratio')) * int(doc.get('upvotes'))) / float(doc.get('ratio'))
+            time = doc.get('time')
+            doc['relevance_score'] = relevance_score(up, down, time)
         if sort_by == 'Lucene':
             pass
         elif sort_by == 'Relevant':
-            for doc in docs:
-                up = int(doc.get('upvotes'))
-                down = int(doc.get('upvotes')) / float(doc.get('ratio'))
-                time = doc.get('time')
-                doc['relevance_score'] = relevance_score(up, down, time)
             docs.sort(key=lambda x: x.get('relevance_score'), reverse=True)
 
         elif sort_by == "Newest":

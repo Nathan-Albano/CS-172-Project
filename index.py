@@ -25,9 +25,7 @@ config.setOpenMode(IndexWriterConfig.OpenMode.CREATE)
 writer = IndexWriter(store, config)
 
 
-
-
-def index_reddit(post):
+def index_reddit(post, crawled = None):
     doc = Document()
 
     #stored not tokenized
@@ -68,41 +66,60 @@ def index_reddit(post):
         for url_title in url_titles:
             doc.add(TextField("url_title", url_title, Field.Store.YES))
 
-    writer.addDocument(doc)
-
-def crawled_links_index(post):
-    doc = Document()
-    title = post.get("title")
-    if title:
-        doc.add(TextField("link_title", title, Field.Store.YES))
-
-
-    body = post.get("body")
-    for text in body:
-        doc.add(TextField("link_body", text, Field.Store.NO))
-    doc.add(StringField("from_reddit", post.get("from_reddit", ""), Field.Store.YES))
+    if crawled:
+        for link in crawled:
+            title = link.get("title")
+            if title:
+                doc.add(TextField("link_title", title, Field.Store.YES))
+            for text in link.get("body", []):
+                doc.add(TextField("link_body", text, Field.Store.NO))
 
     writer.addDocument(doc)
+
+# def crawled_links_index(post):
+#     doc = Document()
+#     title = post.get("title")
+#     if title:
+#         doc.add(TextField("link_title", title, Field.Store.YES))
+
+
+#     body = post.get("body")
+#     for text in body:
+#         doc.add(TextField("link_body", text, Field.Store.NO))
+#     doc.add(StringField("from_reddit", post.get("from_reddit", ""), Field.Store.YES))
+
+#     writer.addDocument(doc)
 
 
 def main():
-    print(lucene.VERSION)
     if not os.path.exists(index_dir):
         os.mkdir(index_dir)
     reddit_data = sorted(glob(os.path.join(data_dir, "chunk_*.json")))
     reddit_data += sorted(glob(os.path.join(data_dir, "data_*.json")))
     crawled_data = sorted(glob(os.path.join(data_dir, "crawled_links_*.json")))
+
+    crawled_map = {}
+    for file in crawled_data:
+        with open(file, 'r', encoding='utf-8') as f:
+            links = json.load(f)
+        for link in links:
+            reddit_id = link.get("from_reddit")
+            if reddit_id:
+                if reddit_id not in crawled_map:
+                    crawled_map[reddit_id] = []
+                crawled_map[reddit_id].append(link)
+
+
     for data in reddit_data:
         with open(data, 'r', encoding='utf-8') as f:
             submissions = json.load(f)
         for submission in submissions:
-            index_reddit(submission)
-
-    for data in crawled_data:
-        with open(data, 'r', encoding='utf-8') as f:
-            links = json.load(f)
-        for link in links:
-            crawled_links_index(link)
+            reddit_id = submission.get("ID")
+            crawled = crawled_map.get(reddit_id)
+            if crawled:
+                index_reddit(submission, crawled)
+            else:
+                index_reddit(submission)
 
     writer.close()
 
