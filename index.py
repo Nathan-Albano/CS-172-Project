@@ -45,7 +45,7 @@ def extract_links(post):
     return links
 
 
-def compute_pagerank(graph, d=0.85, max_iter=50):
+def compute_pagerank(graph, d=0.85, max_iter=50, tol=1e-6):
     scores = {node: 1.0 for node in graph}
     num_nodes = len(graph)
     for _ in range(max_iter):
@@ -56,11 +56,14 @@ def compute_pagerank(graph, d=0.85, max_iter=50):
                 if node in graph[other]:
                     rank_sum += scores[other] / len(graph[other])
             new_scores[node] = (1 - d) / num_nodes + d * rank_sum
+        diff = max(abs(new_scores[node] - scores[node]) for node in graph)
         scores = new_scores
+        if diff < tol:
+            break
     return scores
 
 
-def index_reddit(post, pr_scores):
+def index_reddit(post, pr_scores, crawled=None):
     doc = Document()
 
     doc.add(StringField("subreddit", post.get("subreddit"), Field.Store.YES))
@@ -89,10 +92,18 @@ def index_reddit(post, pr_scores):
         for url_title in url_titles:
             doc.add(TextField("url_title", url_title, Field.Store.YES))
 
-    url = post.get("retrievedfrom")
+    url = post.get("ID")
     pr_score = pr_scores.get(url, 0.0)
     doc.add(FloatPoint("pagerank", pr_score))
     doc.add(StoredField("pagerank", pr_score))
+
+    if crawled:
+        for link in crawled:
+            title = link.get("title")
+            if title:
+                doc.add(TextField("link_title", title, Field.Store.YES))
+            for text in link.get("body", []):
+                doc.add(TextField("link_body", text, Field.Store.NO))
 
     writer.addDocument(doc)
 
@@ -115,33 +126,44 @@ def main():
 
     reddit_data = sorted(glob(os.path.join(data_dir, "chunk_*.json")))
     reddit_data += sorted(glob(os.path.join(data_dir, "data_*.json")))
+    crawled_data = sorted(glob(os.path.join(data_dir, "crawled_links_*.json")))
+    crawled_map = {}
+    for file in crawled_data:
+        with open(file, 'r', encoding='utf-8') as f:
+            links = json.load(f)
+        for link in links:
+            reddit_id = link.get("from_reddit")
+            if reddit_id:
+                if reddit_id not in crawled_map:
+                    crawled_map[reddit_id] = []
+            crawled_map[reddit_id].append(link)
+    print("Created crawled hash map")
 
     all_posts = []
     for data in reddit_data:
         with open(data, 'r', encoding='utf-8') as f:
             submissions = json.load(f)
         for post in submissions:
-            url = post.get("retrievedfrom")
+            url = post.get("ID")
             if url:
                 url_to_post[url] = post
-                out_links = extract_links(post)
+                out_links = extract_links(post) 
                 link_graph[url].update(out_links)
             all_posts.append(post)
 
     pagerank_scores = compute_pagerank(link_graph)
 
+    print("Finished calculating pagerank")
     for post in all_posts:
-        index_reddit(post, pagerank_scores)
-
-    crawled_data = sorted(glob(os.path.join(data_dir, "crawled_links_*.json")))
-    for data in crawled_data:
-        with open(data, 'r', encoding='utf-8') as f:
-            links = json.load(f)
-        for link in links:
-            crawled_links_index(link)
+        reddit_id = post.get("ID")
+        crawled = crawled_map.get(reddit_id)
+        if crawled:
+            index_reddit(post, pagerank_scores, crawled)
+        else:
+            index_reddit(post, pagerank_scores)
 
     writer.close()
-
+    print("Finished Indexing")
 
 if __name__ == "__main__":
     main()

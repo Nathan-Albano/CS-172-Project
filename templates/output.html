@@ -40,6 +40,7 @@
                 <th>Date</th>
                 <th>Lucene Score (BM25)</th>
                 <th>Relevant Score</th>
+                <th>PageRank Score</th>
                 <th>Post</th>
                 <th>Link</th>
             </tr>
@@ -56,6 +57,13 @@
             <td>
                 {% if doc.relevance_score is not none %}
                     {{ "%.2f"|format(doc.relevance_score) }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </td>
+            <td>
+                {% if doc.pagerank is not none %}
+                    {{ "%.6f"|format(doc.pagerank) }}
                 {% else %}
                     N/A
                 {% endif %}
