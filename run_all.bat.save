@@ -1,0 +1,9 @@
+@echo off
+echo Running index.py...
+python3 index.py
+
+echo Starting web app (app.py)...
+python3 app.py
+
+pause
+
